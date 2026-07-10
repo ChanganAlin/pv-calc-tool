@@ -1,0 +1,5 @@
+province,period_name,start_time,end_time,is_pv_period,pv_weight,note
+默认,尖,09:00,12:00,true,1.0,默认尖段按光伏可消纳
+默认,峰,08:00,11:00,true,1.0,默认峰段按光伏可消纳
+默认,平,11:00,17:00,true,0.6,默认平段部分计入
+默认,谷,23:00,07:00,false,0.0,默认谷段不计入

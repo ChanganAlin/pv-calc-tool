@@ -1,0 +1,10 @@
+date,type,name,load_factor,is_workday
+2026-01-01,holiday,元旦,0.1,false
+2026-02-15,adjusted_workday,春节调休补班,1.0,true
+2026-02-16,holiday,春节,0.05,false
+2026-02-17,holiday,春节,0.05,false
+2026-02-18,holiday,春节,0.05,false
+2026-02-19,holiday,春节,0.05,false
+2026-02-20,holiday,春节,0.05,false
+2026-02-21,holiday,春节,0.05,false
+2026-02-22,holiday,春节,0.05,false

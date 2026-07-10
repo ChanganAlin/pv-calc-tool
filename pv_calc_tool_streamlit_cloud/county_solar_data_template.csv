@@ -1,0 +1,4 @@
+province,city,county,latitude,best_tilt_deg,equivalent_hours,annual_specific_yield_kwh_per_kwp,resource_level,data_source_note
+陕西省,西安市,雁塔区,34.22,34,1120,1120,较好,示例：替换为权威区县辐照数据
+陕西省,榆林市,榆阳区,38.28,38,1420,1420,优秀,示例：替换为权威区县辐照数据
+

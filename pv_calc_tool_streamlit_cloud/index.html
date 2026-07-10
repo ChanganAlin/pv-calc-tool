@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --orange: #f05a1a;
+      --red: #d62019;
+      --brown: #3a2b2b;
+      --muted: #7a6a66;
+      --line: rgba(240, 90, 26, 0.22);
+      --soft: rgba(240, 90, 26, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+      color: var(--brown);
+      background: transparent;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--brown);
+      padding: 7px 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    button.primary {
+      border-color: var(--orange);
+      background: linear-gradient(90deg, var(--orange), var(--red));
+      color: #fff;
+    }
+
+    button:hover {
+      filter: brightness(0.98);
+      border-color: var(--orange);
+    }
+
+    .stage {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff8f0;
+      box-shadow: 0 8px 22px rgba(94, 48, 33, 0.04);
+    }
+
+    .image-wrap {
+      position: relative;
+      width: 100%;
+      min-height: 320px;
+      background: #fff8f0;
+    }
+
+    #bgImage {
+      display: block;
+      width: 100%;
+      height: auto;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      background: transparent;
+    }
+
+    .load-error {
+      display: none;
+      padding: 140px 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .status {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.88);
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="hint">直接在上传截图中沿屋顶边界依次点击选点；点击第一个点或按“闭合区域”完成不规则框选。</div>
+    <div class="actions">
+      <button id="undoBtn" type="button">撤销一点</button>
+      <button id="clearBtn" type="button">清空</button>
+      <button id="closeBtn" class="primary" type="button">闭合区域</button>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="image-wrap" id="imageWrap">
+      <img id="bgImage" alt="上传的地图截图" />
+      <canvas id="canvas"></canvas>
+      <div class="load-error" id="loadError">图片加载失败，请重新上传截图或刷新页面</div>
+    </div>
+    <div class="status">
+      <span id="pointCount">已选 0 个点</span>
+      <span id="closedState">未闭合</span>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = document.getElementById("bgImage");
+    const imageWrap = document.getElementById("imageWrap");
+    const loadError = document.getElementById("loadError");
+    const pointCount = document.getElementById("pointCount");
+    const closedState = document.getElementById("closedState");
+    const undoBtn = document.getElementById("undoBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const closeBtn = document.getElementById("closeBtn");
+
+    let points = [];
+    let closed = false;
+    let imageData = "";
+    let fallbackImageData = "";
+    let initializedFor = "";
+
+    function postMessage(type, data) {
+      window.parent.postMessage(
+        Object.assign({ isStreamlitMessage: true, type }, data || {}),
+        "*"
+      );
+    }
+
+    function resizeFrame() {
+      const height = Math.ceil(document.documentElement.scrollHeight);
+      postMessage("streamlit:setFrameHeight", { height });
+    }
+
+    function ready() {
+      postMessage("streamlit:componentReady", { apiVersion: 1 });
+      resizeFrame();
+    }
+
+    function sendValue() {
+      postMessage("streamlit:setComponentValue", {
+        dataType: "json",
+        value: {
+          points: points.map((p, idx) => ({ order: idx + 1, x: p.x, y: p.y })),
+          closed,
+        },
+      });
+    }
+
+    function fitCanvasToImage() {
+      if (!img.naturalWidth || !img.naturalHeight) return;
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.style.height = `${img.clientHeight}px`;
+    }
+
+    function draw() {
+      if (!canvas.width || !canvas.height) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (points.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i += 1) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        if (closed && points.length >= 3) ctx.closePath();
+        ctx.lineWidth = Math.max(3, canvas.width / 420);
+        ctx.strokeStyle = "rgba(240, 90, 26, 0.98)";
+        ctx.stroke();
+
+        if (closed && points.length >= 3) {
+          ctx.fillStyle = "rgba(240, 90, 26, 0.18)";
+          ctx.fill();
+        }
+      }
+
+      points.forEach((p, idx) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(5, canvas.width / 180), 0, Math.PI * 2);
+        ctx.fillStyle = idx === 0 ? "#d62019" : "#f05a1a";
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#fff";
+        ctx.stroke();
+      });
+
+      pointCount.textContent = `已选 ${points.length} 个点`;
+      closedState.textContent = closed ? "已闭合" : "未闭合";
+      resizeFrame();
+    }
+
+    function setImage(data, fallbackData) {
+      imageData = data || "";
+      fallbackImageData = fallbackData || "";
+      loadError.style.display = "none";
+      img.style.display = "block";
+      canvas.style.display = "block";
+      img.onload = () => {
+        fitCanvasToImage();
+        draw();
+      };
+      img.onerror = () => {
+        if (fallbackImageData && fallbackImageData !== imageData) {
+          const retry = fallbackImageData;
+          fallbackImageData = "";
+          setImage(retry, "");
+          return;
+        }
+        img.style.display = "none";
+        canvas.style.display = "none";
+        imageWrap.style.minHeight = "320px";
+        loadError.style.display = "block";
+        resizeFrame();
+      };
+      img.src = imageData;
+    }
+
+    function pointFromEvent(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * canvas.width / rect.width)),
+        y: Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * canvas.height / rect.height)),
+      };
+    }
+
+    function distance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    canvas.addEventListener("click", (event) => {
+      const p = pointFromEvent(event);
+      const snapDistance = Math.max(12, canvas.width / 60);
+
+      if (points.length >= 3 && distance(p, points[0]) <= snapDistance) {
+        closed = true;
+      } else {
+        if (closed) {
+          points = [];
+          closed = false;
+        }
+        points.push(p);
+      }
+
+      draw();
+      sendValue();
+    });
+
+    undoBtn.addEventListener("click", () => {
+      points.pop();
+      closed = false;
+      draw();
+      sendValue();
+    });
+
+    clearBtn.addEventListener("click", () => {
+      points = [];
+      closed = false;
+      draw();
+      sendValue();
+    });
+
+    closeBtn.addEventListener("click", () => {
+      if (points.length >= 3) closed = true;
+      draw();
+      sendValue();
+    });
+
+    window.addEventListener("message", (event) => {
+      const data = event.data || {};
+      if (!data.isStreamlitMessage || data.type !== "streamlit:render") return;
+
+      const args = data.args || {};
+      const componentId = `${args.image_id || ""}|${JSON.stringify(args.default_points || [])}`;
+      if (componentId !== initializedFor) {
+        initializedFor = componentId;
+        points = (args.default_points || []).map((p) => ({ x: Number(p.x), y: Number(p.y) }));
+        closed = Boolean(args.closed);
+      }
+
+      const nextImage = args.image_data || args.image_src || "";
+      const fallbackImage = args.image_src || "";
+      if (nextImage && nextImage !== imageData) {
+        setImage(nextImage, fallbackImage);
+      } else {
+        fitCanvasToImage();
+        draw();
+      }
+
+      sendValue();
+    });
+
+    window.addEventListener("resize", () => {
+      fitCanvasToImage();
+      draw();
+    });
+    ready();
+  </script>
+</body>
+</html>
