@@ -3,8 +3,13 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import sys
 from io import BytesIO
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
 import pandas as pd
 import streamlit as st
@@ -79,7 +84,6 @@ from modules.sensitivity_calc import build_risk_suggestions, sensitivity_analysi
 from modules.tilt_angle_calc import recommend_tilt_angle
 
 
-BASE_DIR = Path(__file__).resolve().parent
 LOGO_PATH = BASE_DIR / "assets" / "broad_sun_logo.png"
 POLYGON_SELECTOR_DIR = BASE_DIR / "components" / "polygon_selector"
 HOLIDAY_CONFIG_PATH = BASE_DIR / "data" / "holiday_config.csv"
